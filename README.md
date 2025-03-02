@@ -26,3 +26,6 @@ python -u "/hogehoge/Mylog-Scrapar/unipa.py"
 
 実行中は以下のような動作となります。完了すると自動的にChromeが終了し、ディレクトリ内部に「syllabus_results_all_days」というCSVファイルが生成されます。
 
+[![text](https://img.youtube.com/vi/O5cupaiInXY/0.jpg)](https://youtu.be/O5cupaiInXY)
+
+
