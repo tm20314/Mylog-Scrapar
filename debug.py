@@ -518,7 +518,7 @@ def scrape_basic_info_for_all_days():
 
 def scrape_detailed_info_for_all_days(basic_data):
     """
-    全曜日の詳細情報を取得
+    月曜日の1ページ目の詳細情報を取得してテスト
     """
     url = "https://mylog.pub.ous.ac.jp/uprx/up/pk/pky001/Pky00101.xhtml?guestlogin=Kmh006"
     driver = setup_driver()
@@ -527,74 +527,66 @@ def scrape_detailed_info_for_all_days(basic_data):
     # 1) 「開講年度学期」を「すべて対象」に
     select_all_gakki(driver)
 
-    # 曜日ごとに検索→詳細情報取得→曜日OFF
-    day_values = ["1","2","3","4","5","6","7"]  # 月～日
+    # 月曜日のみ処理
+    dv = "1"  # 月曜日
     all_results = []
 
     # 念のため最初に全曜日OFFにしておく
     uncheck_all_days(driver)
 
-    for dv in day_values:
-        print(f"\n曜日 {dv} の詳細情報を取得中...")
-        # 1) dv の曜日だけ ON
-        set_checkbox(driver, dv, check=True)
-        
-        # 2) 検索ボタン押下 → 結果1ページ目表示
+    print(f"\n月曜日の詳細情報を取得中...")
+    # 1) 月曜日だけ ON
+    set_checkbox(driver, dv, check=True)
+    
+    # 2) 検索ボタン押下 → 結果1ページ目表示
+    click_search(driver)
+    time.sleep(3)  # 検索結果の表示を待つ
+
+    # 1ページ目のみ処理
+    print("\n1ページ目を処理中...")
+    
+    # 現在のページの行を取得
+    tbody = driver.find_element(By.ID, "funcForm:table_data")
+    rows = tbody.find_elements(By.TAG_NAME, "tr")
+    
+    if not rows:
+        print("  警告: データが見つかりません。再試行します。")
+        # ページを再読み込み
         click_search(driver)
-        time.sleep(3)  # 検索結果の表示を待つ
+        time.sleep(3)
+        tbody = driver.find_element(By.ID, "funcForm:table_data")
+        rows = tbody.find_elements(By.TAG_NAME, "tr")
+    
+    print(f"  行数: {len(rows)}")
+    
+    for i, row in enumerate(rows):
+        # 基本情報を取得
+        cells = row.find_elements(By.TAG_NAME, "td")
+        if len(cells) < 6:
+            continue
+        
+        row_data = {
+            "曜日時限": cells[0].text.strip(),
+            "授業科目": cells[1].text.strip(),
+            "担当教員": cells[2].text.strip(),
+            "開講区分": cells[3].text.strip(),
+            "開講年度学期": cells[4].text.strip(),
+            "単位数": cells[5].text.strip(),
+            "曜日": dv
+        }
+        
+        # 詳細情報を取得
+        details = get_syllabus_details(driver, i, 1)  # 1ページ目
+        row_data.update(details)
+        
+        all_results.append(row_data)
 
-        # 3) ページをめくりながらデータを取得
-        total_pages = get_total_pages(driver)
-        print(f"総ページ数: {total_pages}")
+    # 月曜日を OFF
+    set_checkbox(driver, dv, check=False)
+    time.sleep(2)
 
-        for page in range(1, total_pages + 1):
-            print(f"\nページ {page}/{total_pages} を処理中...")
-            if page > 1:
-                go_to_page(driver, page)
-                time.sleep(3)  # ページ遷移後の待機時間を追加
-            
-            # 現在のページの行を取得
-            tbody = driver.find_element(By.ID, "funcForm:table_data")
-            rows = tbody.find_elements(By.TAG_NAME, "tr")
-            
-            if not rows:
-                print(f"  警告: ページ {page} にデータが見つかりません。再試行します。")
-                # ページを再読み込み
-                go_to_page(driver, page)
-                time.sleep(3)
-                tbody = driver.find_element(By.ID, "funcForm:table_data")
-                rows = tbody.find_elements(By.TAG_NAME, "tr")
-            
-            print(f"  ページ {page} の行数: {len(rows)}")
-            
-            for i, row in enumerate(rows):
-                # 基本情報を取得
-                cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 6:
-                    continue
-                
-                row_data = {
-                    "曜日時限": cells[0].text.strip(),
-                    "授業科目": cells[1].text.strip(),
-                    "担当教員": cells[2].text.strip(),
-                    "開講区分": cells[3].text.strip(),
-                    "開講年度学期": cells[4].text.strip(),
-                    "単位数": cells[5].text.strip(),
-                    "曜日": dv
-                }
-                
-                # 詳細情報を取得（ページ番号を渡す）
-                details = get_syllabus_details(driver, i, page)
-                row_data.update(details)
-                
-                all_results.append(row_data)
-
-        # 4) dv の曜日を OFF (次の曜日に行く前に外す)
-        set_checkbox(driver, dv, check=False)
-        time.sleep(2)  # チェックボックス操作後の待機時間を追加
-
-    # 全曜日ぶんが終了したら CSV 化
-    save_to_csv(all_results, "syllabus_results_detailed.csv")
+    # CSV 化
+    save_to_csv(all_results, "syllabus_results_monday_test.csv")
     driver.quit()
     print("テスト完了: syllabus_results_monday_test.csv に保存しました")
 
