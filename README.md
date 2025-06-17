@@ -29,3 +29,8 @@ python -u "/hogehoge/Mylog-Scrapar/unipa.py"
 [![text](https://img.youtube.com/vi/O5cupaiInXY/0.jpg)](https://youtu.be/O5cupaiInXY)
 
 
+
+
+# やるべきこととバグ
+- 木曜日の８ページ目が取得できない
+- 詳細画面の取得する処理で２ページ目以降が取得できない
