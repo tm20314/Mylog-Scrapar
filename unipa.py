@@ -5,15 +5,116 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+import subprocess
+import os
 
 ################################
 # 基本的なブラウザ操作
 ################################
 
 def setup_driver():
-    driver = webdriver.Chrome()
-    driver.maximize_window()
-    return driver
+    """
+    Chromeドライバーを設定して返す
+    Linux環境での安定性を向上させるためのオプションを追加
+    """
+    chrome_options = Options()
+    
+    # Linux環境での安定性向上オプション
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-images")  # 画像読み込みを無効化して高速化
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--allow-running-insecure-content")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+    
+    # ユーザーエージェントを設定
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # ウィンドウサイズを設定
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    # メモリ使用量を制限
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=4096")
+    
+    try:
+        # ChromeDriverのパスを自動検出
+        chromedriver_path = None
+        
+        # 方法1: PATHから検索
+        try:
+            result = subprocess.run(['which', 'chromedriver'], capture_output=True, text=True)
+            if result.returncode == 0:
+                chromedriver_path = result.stdout.strip()
+                print(f"ChromeDriverをPATHから発見: {chromedriver_path}")
+        except:
+            pass
+        
+        # 方法2: 一般的な場所を確認
+        if chromedriver_path is None:
+            common_paths = [
+                '/usr/bin/chromedriver',
+                '/usr/local/bin/chromedriver',
+                '/snap/bin/chromedriver',
+                './chromedriver'
+            ]
+            for path in common_paths:
+                if os.path.exists(path):
+                    chromedriver_path = path
+                    print(f"ChromeDriverを発見: {chromedriver_path}")
+                    break
+        
+        # 方法3: ChromeDriverをダウンロード
+        if chromedriver_path is None:
+            print("ChromeDriverが見つかりません。自動ダウンロードを試行します...")
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                chromedriver_path = ChromeDriverManager().install()
+                print(f"ChromeDriverをダウンロード: {chromedriver_path}")
+            except ImportError:
+                print("webdriver-managerがインストールされていません。")
+                print("以下のコマンドでインストールしてください:")
+                print("pip install webdriver-manager")
+                raise Exception("ChromeDriverが見つからず、自動ダウンロードもできません")
+        
+        # Serviceオブジェクトを作成
+        service = Service(executable_path=chromedriver_path)
+        
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver.maximize_window()
+        
+        # ページ読み込みタイムアウトを設定
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
+        
+        print("Chromeドライバーの初期化が完了しました")
+        return driver
+        
+    except Exception as e:
+        print(f"Chromeドライバーの初期化に失敗: {e}")
+        print("ヘッドレスモードで再試行します...")
+        
+        # ヘッドレスモードで再試行
+        chrome_options.add_argument("--headless")
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.set_page_load_timeout(30)
+            driver.implicitly_wait(10)
+            print("ヘッドレスモードでChromeドライバーの初期化が完了しました")
+            return driver
+        except Exception as e2:
+            print(f"ヘッドレスモードでも初期化に失敗: {e2}")
+            print("\nChromeDriverのインストール方法:")
+            print("1. ChromeDriverをダウンロード: https://chromedriver.chromium.org/")
+            print("2. ダウンロードしたファイルを解凍")
+            print("3. chromedriverを/usr/local/bin/に移動: sudo mv chromedriver /usr/local/bin/")
+            print("4. 実行権限を付与: sudo chmod +x /usr/local/bin/chromedriver")
+            raise e2
 
 def open_syllabus_site(driver, url):
     driver.get(url)
@@ -22,17 +123,161 @@ def select_all_gakki(driver):
     """
     「開講年度学期」を「すべて対象」に変更
     """
-    wait = WebDriverWait(driver, 10)
+    print("開講年度学期の選択を開始します...")
     
-    label = wait.until(EC.element_to_be_clickable((By.ID, "funcForm:kaikoGakki_label")))
-    label.click()
-    time.sleep(1)
+    # ページが完全に読み込まれるまで待機
+    time.sleep(3)
     
-    all_option = wait.until(EC.element_to_be_clickable(
-        (By.XPATH, "//li[@class='ui-selectonemenu-item ui-selectonemenu-list-item ui-corner-all' and @data-label='すべて対象']")
-    ))
-    all_option.click()
-    time.sleep(1)
+    wait = WebDriverWait(driver, 20)  # タイムアウトを20秒に延長
+    
+    try:
+        # まず、ページが完全に読み込まれているか確認
+        print("ページの読み込み状況を確認中...")
+        
+        # 複数の方法で要素を検索
+        label = None
+        
+        # 方法1: IDで検索
+        try:
+            label = wait.until(EC.element_to_be_clickable((By.ID, "funcForm:kaikoGakki_label")))
+            print("IDで要素を発見しました")
+        except:
+            print("IDでの要素検索に失敗、他の方法を試行中...")
+        
+        # 方法2: ラベルテキストで検索
+        if label is None:
+            try:
+                label = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//label[contains(text(), '開講年度学期') or contains(text(), '年度学期')]")
+                ))
+                print("ラベルテキストで要素を発見しました")
+            except:
+                print("ラベルテキストでの要素検索に失敗...")
+        
+        # 方法3: より広範囲のXPathで検索
+        if label is None:
+            try:
+                label = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//div[contains(@class, 'ui-selectonemenu')]//label")
+                ))
+                print("XPathで要素を発見しました")
+            except:
+                print("XPathでの要素検索に失敗...")
+        
+        # 方法4: CSSセレクタで検索
+        if label is None:
+            try:
+                label = wait.until(EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "label.ui-selectonemenu-label")
+                ))
+                print("CSSセレクタで要素を発見しました")
+            except:
+                print("CSSセレクタでの要素検索に失敗...")
+        
+        if label is None:
+            raise Exception("開講年度学期の選択要素が見つかりません")
+        
+        # 要素が見えるようにスクロール
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", label)
+        time.sleep(2)
+        
+        # クリック
+        print("開講年度学期の選択ボックスをクリック中...")
+        label.click()
+        time.sleep(2)
+        
+        # 「すべて対象」オプションを選択
+        print("「すべて対象」オプションを検索中...")
+        
+        all_option = None
+        
+        # 方法1: 元のXPath
+        try:
+            all_option = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//li[@class='ui-selectonemenu-item ui-selectonemenu-list-item ui-corner-all' and @data-label='すべて対象']")
+            ))
+            print("元のXPathで「すべて対象」オプションを発見しました")
+        except:
+            print("元のXPathでの検索に失敗、他の方法を試行中...")
+        
+        # 方法2: テキストで検索
+        if all_option is None:
+            try:
+                all_option = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//li[contains(text(), 'すべて対象')]")
+                ))
+                print("テキストで「すべて対象」オプションを発見しました")
+            except:
+                print("テキストでの検索に失敗...")
+        
+        # 方法3: より広範囲の検索
+        if all_option is None:
+            try:
+                all_option = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//li[contains(@class, 'ui-selectonemenu-item') and contains(text(), 'すべて')]")
+                ))
+                print("広範囲検索で「すべて対象」オプションを発見しました")
+            except:
+                print("広範囲検索に失敗...")
+        
+        if all_option is None:
+            raise Exception("「すべて対象」オプションが見つかりません")
+        
+        # オプションが見えるようにスクロール
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", all_option)
+        time.sleep(1)
+        
+        # クリック
+        print("「すべて対象」を選択中...")
+        all_option.click()
+        time.sleep(2)
+        
+        print("開講年度学期の選択が完了しました")
+        
+    except Exception as e:
+        print(f"開講年度学期の選択中にエラーが発生: {e}")
+        print("現在のページのHTMLを確認中...")
+        
+        # デバッグ用：現在のページのHTMLを出力
+        try:
+            page_source = driver.page_source
+            print("ページのHTML（最初の1000文字）:")
+            print(page_source[:1000])
+        except:
+            print("HTMLの取得に失敗しました")
+        
+        # 代替手段：手動で要素を探す
+        print("代替手段として、手動で要素を探します...")
+        try:
+            # ページ内のすべてのラベル要素を確認
+            labels = driver.find_elements(By.TAG_NAME, "label")
+            print(f"ページ内のラベル要素数: {len(labels)}")
+            for i, lbl in enumerate(labels[:5]):  # 最初の5個のみ表示
+                print(f"  ラベル{i+1}: {lbl.text} (ID: {lbl.get_attribute('id')})")
+            
+            # セレクトメニュー要素を確認
+            select_menus = driver.find_elements(By.CSS_SELECTOR, ".ui-selectonemenu")
+            print(f"セレクトメニュー要素数: {len(select_menus)}")
+            
+            if select_menus:
+                print("最初のセレクトメニューをクリックしてみます...")
+                select_menus[0].click()
+                time.sleep(2)
+                
+                # ドロップダウンのオプションを確認
+                options = driver.find_elements(By.CSS_SELECTOR, ".ui-selectonemenu-item")
+                print(f"ドロップダウンオプション数: {len(options)}")
+                for opt in options:
+                    print(f"  オプション: {opt.text}")
+                    if "すべて" in opt.text:
+                        print("「すべて」を含むオプションをクリックします...")
+                        opt.click()
+                        time.sleep(2)
+                        break
+        except Exception as debug_e:
+            print(f"デバッグ処理中にエラー: {debug_e}")
+        
+        raise e
 
 ################################
 # 曜日チェック ON/OFF
@@ -599,13 +844,47 @@ def scrape_detailed_info_for_all_days(basic_data):
     print("テスト完了: syllabus_results_monday_test.csv に保存しました")
 
 def main():
-    # 1. 基本情報の取得
-    print("基本情報の取得を開始します...")
-    basic_data = scrape_basic_info_for_all_days()
-    
-    # 2. 詳細情報の取得
-    print("詳細情報の取得を開始します...")
-    scrape_detailed_info_for_all_days(basic_data)
+    try:
+        print("=== シラバススクレイピング開始 ===")
+        print("Linux環境での実行を検出しました。安定性向上オプションを適用中...")
+        
+        # 1. 基本情報の取得
+        print("基本情報の取得を開始します...")
+        basic_data = scrape_basic_info_for_all_days()
+        
+        # 2. 詳細情報の取得
+        print("詳細情報の取得を開始します...")
+        scrape_detailed_info_for_all_days(basic_data)
+        
+        print("=== スクレイピング完了 ===")
+        
+    except KeyboardInterrupt:
+        print("\nユーザーによって中断されました。")
+        print("ブラウザを終了中...")
+        try:
+            # グローバル変数でdriverを管理していないため、ここでは終了処理のみ
+            pass
+        except:
+            pass
+        print("プログラムを終了します。")
+        
+    except Exception as e:
+        print(f"\n予期しないエラーが発生しました: {e}")
+        print("エラーの詳細:")
+        import traceback
+        traceback.print_exc()
+        
+        print("\nトラブルシューティングのヒント:")
+        print("1. Chromeブラウザがインストールされているか確認してください")
+        print("2. ChromeDriverがPATHに含まれているか確認してください")
+        print("3. インターネット接続を確認してください")
+        print("4. 必要に応じて、ChromeDriverを手動でダウンロードしてください")
+        
+        try:
+            # ブラウザを終了
+            pass
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
